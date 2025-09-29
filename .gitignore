@@ -1,0 +1,173 @@
+# ===========================================
+# Telegram Image to PDF Bot - .gitignore
+# ===========================================
+
+# Environment Variables and Secrets
+.env
+.env.local
+.env.production
+.env.development
+*.env
+!.env.example
+
+# Bot Token and API Keys (double protection)
+*token*
+*secret*
+*key*
+*api*
+# But allow certain documentation files
+!API.md
+!requirements.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+telegram-bot-env/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.virtualenv/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and Monitoring
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+
+# PM2 Logs and Runtime
+.pm2/
+pm2.json
+ecosystem.config.json
+# But keep our ecosystem.config.js template
+!ecosystem.config.js
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Image Processing Temporary Files
+/tmp/img2pdf_*
+/temp/img2pdf_*
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.heic
+*.heif
+# But keep example images in docs
+!docs/**/*.png
+!docs/**/*.jpg
+!README_images/
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Database Files (if added later)
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Certificate Files
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Backup Files
+*.bak
+*.backup
+*.old
+*_backup
+*_old
+
+# Local Configuration
+config.local.py
+settings.local.py
+local_settings.py
+
+# Docker (if used)
+Dockerfile.local
+docker-compose.override.yml
+
+# Jupyter Notebooks (if used for development)
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmyp
+dmyp.json
+
+# Node.js (if any frontend tools are added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignore specific sensitive files that might be created
+webhook_info.json
+bot_info.json
+user_data.json
+sessions.json
+
+# ===========================================
+# Important: Always verify before committing!
+# Run: git status
+# Check that no sensitive files are staged
+# ===========================================
