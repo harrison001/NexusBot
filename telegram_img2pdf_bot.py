@@ -59,6 +59,7 @@ class UserSession:
         self.images.clear()
         self.temp_dir = tempfile.mkdtemp()
         self.last_activity = datetime.now()
+        self.status_message_id = None  # Reset status message tracking
 
     def cleanup(self):
         """
@@ -73,6 +74,9 @@ class UserSession:
                 shutil.rmtree(self.temp_dir)
             except Exception as e:
                 logger.error(f"Error cleaning temporary directory: {e}")
+
+        # Reset status message tracking
+        self.status_message_id = None
 
         # Update last activity time to cleanup time
         self.last_activity = datetime.now()
