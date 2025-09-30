@@ -42,16 +42,21 @@ logger = logging.getLogger(__name__)
 
 class UserSession:
     def __init__(self):
-        self.images: List[str] = []
+        self.images: List[tuple[int, str]] = []  # List of (update_id, image_path) tuples
         self.temp_dir = tempfile.mkdtemp()
         self.last_activity = datetime.now()
         self.status_message_id: int = None  # Track the status message for updates
-        self.message_lock = asyncio.Lock()  # Lock to prevent concurrent message updates
-        self.processing_lock = asyncio.Lock()  # Lock to ensure images are processed in order
+        self.update_lock = asyncio.Lock()  # Single lock for add_image + status update (critical section)
 
-    def add_image(self, image_path: str):
-        self.images.append(image_path)
+    def add_image(self, image_path: str, update_id: int):
+        """Add image with update_id for later sorting"""
+        self.images.append((update_id, image_path))
         self.last_activity = datetime.now()
+
+    def get_sorted_images(self) -> List[str]:
+        """Get images sorted by update_id (correct order)"""
+        sorted_images = sorted(self.images, key=lambda x: x[0])  # Sort by update_id
+        return [path for _, path in sorted_images]  # Return only paths
 
     def clear(self):
         if os.path.exists(self.temp_dir):
@@ -127,28 +132,36 @@ class Img2PDFBot:
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         session = self.user_sessions[user_id]
+        update_id = update.update_id
 
-        # Use processing lock to ensure images are added in order
-        async with session.processing_lock:
-            try:
-                photo = update.message.photo[-1]
-                file = await context.bot.get_file(photo.file_id)
+        logger.info(f"[User {user_id}] Received photo with update_id={update_id}")
 
-                file_extension = '.jpg'
-                if file.file_path:
-                    _, ext = os.path.splitext(file.file_path)
-                    if ext.lower() in self.supported_extensions:
-                        file_extension = ext
+        try:
+            photo = update.message.photo[-1]
+            file = await context.bot.get_file(photo.file_id)
 
-                # Use timestamp and UUID to ensure unique filename and avoid race conditions
-                unique_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
-                image_path = os.path.join(
-                    session.temp_dir,
-                    f"image_{unique_id}{file_extension}"
-                )
+            file_extension = '.jpg'
+            if file.file_path:
+                _, ext = os.path.splitext(file.file_path)
+                if ext.lower() in self.supported_extensions:
+                    file_extension = ext
 
-                await file.download_to_drive(image_path)
-                session.add_image(image_path)
+            # Use timestamp and UUID to ensure unique filename
+            unique_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+            image_path = os.path.join(
+                session.temp_dir,
+                f"image_{unique_id}{file_extension}"
+            )
+
+            # Download can happen concurrently (no lock needed)
+            await file.download_to_drive(image_path)
+
+            logger.info(f"[User {user_id}] Downloaded photo update_id={update_id} to {image_path}")
+
+            # Critical section: add image + update status (must be atomic)
+            async with session.update_lock:
+                session.add_image(image_path, update_id)
+                logger.info(f"[User {user_id}] Added photo update_id={update_id}, total={len(session.images)}")
 
                 keyboard = [
                     [InlineKeyboardButton("📄 Generate PDF", callback_data="generate_pdf")],
@@ -158,40 +171,39 @@ class Img2PDFBot:
 
                 status_text = f"✅ Image received! Currently have {len(session.images)} image{'s' if len(session.images) > 1 else ''}."
 
-                # Use lock to prevent concurrent message creation/update
-                async with session.message_lock:
-                    # Update existing status message or create new one
-                    if session.status_message_id:
-                        try:
-                            await context.bot.edit_message_text(
-                                chat_id=update.effective_chat.id,
-                                message_id=session.status_message_id,
-                                text=status_text,
-                                reply_markup=reply_markup
-                            )
-                        except Exception as e:
-                            # If editing fails (message too old or deleted), send new message
-                            logger.warning(f"Could not edit status message: {e}")
-                            sent_message = await update.message.reply_text(
-                                status_text,
-                                reply_markup=reply_markup
-                            )
-                            session.status_message_id = sent_message.message_id
-                    else:
-                        # First image, create status message
+                # Update existing status message or create new one
+                if session.status_message_id:
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=session.status_message_id,
+                            text=status_text,
+                            reply_markup=reply_markup
+                        )
+                    except Exception as e:
+                        # If editing fails (message too old or deleted), send new message
+                        logger.warning(f"Could not edit status message: {e}")
                         sent_message = await update.message.reply_text(
                             status_text,
                             reply_markup=reply_markup
                         )
                         session.status_message_id = sent_message.message_id
+                else:
+                    # First image, create status message
+                    sent_message = await update.message.reply_text(
+                        status_text,
+                        reply_markup=reply_markup
+                    )
+                    session.status_message_id = sent_message.message_id
 
-            except Exception as e:
-                logger.error(f"Error processing image: {e}")
-                await update.message.reply_text("❌ Error processing image, please try again.")
+        except Exception as e:
+            logger.error(f"Error processing image: {e}")
+            await update.message.reply_text("❌ Error processing image, please try again.")
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         session = self.user_sessions[user_id]
+        update_id = update.update_id
 
         document = update.message.document
         if not document.file_name:
@@ -205,19 +217,21 @@ class Img2PDFBot:
             )
             return
 
-        # Use processing lock to ensure images are added in order
-        async with session.processing_lock:
-            try:
-                file = await context.bot.get_file(document.file_id)
-                # Use timestamp and UUID to ensure unique filename and avoid race conditions
-                unique_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
-                image_path = os.path.join(
-                    session.temp_dir,
-                    f"image_{unique_id}{ext}"
-                )
+        try:
+            file = await context.bot.get_file(document.file_id)
+            # Use timestamp and UUID to ensure unique filename
+            unique_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+            image_path = os.path.join(
+                session.temp_dir,
+                f"image_{unique_id}{ext}"
+            )
 
-                await file.download_to_drive(image_path)
-                session.add_image(image_path)
+            # Download can happen concurrently (no lock needed)
+            await file.download_to_drive(image_path)
+
+            # Critical section: add image + update status (must be atomic)
+            async with session.update_lock:
+                session.add_image(image_path, update_id)
 
                 keyboard = [
                     [InlineKeyboardButton("📄 Generate PDF", callback_data="generate_pdf")],
@@ -227,36 +241,34 @@ class Img2PDFBot:
 
                 status_text = f"✅ Image received! Currently have {len(session.images)} image{'s' if len(session.images) > 1 else ''}."
 
-                # Use lock to prevent concurrent message creation/update
-                async with session.message_lock:
-                    # Update existing status message or create new one
-                    if session.status_message_id:
-                        try:
-                            await context.bot.edit_message_text(
-                                chat_id=update.effective_chat.id,
-                                message_id=session.status_message_id,
-                                text=status_text,
-                                reply_markup=reply_markup
-                            )
-                        except Exception as e:
-                            # If editing fails (message too old or deleted), send new message
-                            logger.warning(f"Could not edit status message: {e}")
-                            sent_message = await update.message.reply_text(
-                                status_text,
-                                reply_markup=reply_markup
-                            )
-                            session.status_message_id = sent_message.message_id
-                    else:
-                        # First image, create status message
+                # Update existing status message or create new one
+                if session.status_message_id:
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=session.status_message_id,
+                            text=status_text,
+                            reply_markup=reply_markup
+                        )
+                    except Exception as e:
+                        # If editing fails (message too old or deleted), send new message
+                        logger.warning(f"Could not edit status message: {e}")
                         sent_message = await update.message.reply_text(
                             status_text,
                             reply_markup=reply_markup
                         )
                         session.status_message_id = sent_message.message_id
+                else:
+                    # First image, create status message
+                    sent_message = await update.message.reply_text(
+                        status_text,
+                        reply_markup=reply_markup
+                    )
+                    session.status_message_id = sent_message.message_id
 
-            except Exception as e:
-                logger.error(f"Error processing document: {e}")
-                await update.message.reply_text("❌ Error processing image, please try again.")
+        except Exception as e:
+            logger.error(f"Error processing document: {e}")
+            await update.message.reply_text("❌ Error processing image, please try again.")
 
     def images_to_pdf(self, image_paths: List[str], pdf_path: str) -> bool:
         """
@@ -337,7 +349,11 @@ class Img2PDFBot:
                 pdf_filename = f"images_to_pdf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                 pdf_path = os.path.join(session.temp_dir, pdf_filename)
 
-                if self.images_to_pdf(session.images, pdf_path):
+                # Sort images by update_id to ensure correct order
+                sorted_image_paths = session.get_sorted_images()
+                logger.info(f"[User {user_id}] Generating PDF with {len(sorted_image_paths)} images in correct order")
+
+                if self.images_to_pdf(sorted_image_paths, pdf_path):
                     # Update status message to show completion
                     await query.edit_message_text("✅ PDF generation complete! Sending file...")
 
