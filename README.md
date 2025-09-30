@@ -13,6 +13,15 @@ This is a Telegram bot that can receive images sent by users and merge them into
 - Memory leak prevention and optimization
 - Race condition protection for concurrent uploads
 
+
+## 🎬 Demo Video (YouTube Shorts)
+
+**AI built my app in 1 hour — but here’s why humans still matter.**  
+AI accelerates; humans refine. See the bot in action 👇
+
+[![Watch on YouTube](https://img.youtube.com/vi/JFquJVEqLpg/hqdefault.jpg)](https://youtube.com/shorts/JFquJVEqLpg?feature=share)
+
+
 ## Installation and Setup
 
 ### 1. Install Dependencies
