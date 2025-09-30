@@ -19,7 +19,7 @@ This is a Telegram bot that can receive images sent by users and merge them into
 **AI built my app in 1 hour — but here’s why humans still matter.**  
 AI accelerates; humans refine. See the bot in action 👇
 
-[![Watch on YouTube](https://img.youtube.com/vi/JFquJVEqLpg/hqdefault.jpg)](https://youtube.com/shorts/JFquJVEqLpg?feature=share)
+[![Watch on YouTube](https://github.com/harrison001/NexusBot/blob/main/AI_HUMAN.png)](https://youtube.com/shorts/JFquJVEqLpg?feature=share)
 
 
 ## Installation and Setup
